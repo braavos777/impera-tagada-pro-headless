@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Build output (собирается в Action, не хранится в репо)
+dist/
+/vendor/
+
+# System files
+.DS_Store
+Thumbs.db
+*.log
+CLAUDE.md
+
+# IDE
+.idea/
+.vscode/

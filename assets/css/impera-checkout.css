@@ -1,0 +1,26 @@
+iframe#impera-tagada-pro-headless-area:focus-visible {
+	outline: none;
+	outline-offset: 0;
+}
+
+#payment .wc_payment_methods .payment_method_impera_tagada_pro_headless > label{
+	display: flex;
+	align-items: center;
+	gap: 20px;
+}
+
+#payment .wc_payment_methods .payment_method_impera_tagada_pro_headless label .impera-payment-icons{
+	display: flex;
+	align-items: center;
+}
+
+#payment .wc_payment_methods .payment_method_impera_tagada_pro_headless label .impera-payment-icons img{
+	display: block;
+	width: 32px;
+	height: auto;
+}
+
+#payment .wc_payment_methods .payment_method_impera_tagada_pro_headless.payment_box{
+	display:none;
+	padding: 0 !important;
+}
