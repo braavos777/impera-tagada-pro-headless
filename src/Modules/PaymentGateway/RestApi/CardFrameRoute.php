@@ -19,21 +19,17 @@ use WP_REST_Response;
 
 /**
  * POST /card/frame-link - hands a headless storefront the proxy's card form
- * URL, built like the one PaymentGateway::render_iframe() puts into the
- * classic checkout, but issued for the storefront rather than for this shop.
+ * URL, the same one PaymentGateway::render_iframe() puts into the classic
+ * checkout.
  *
- * The session token is an HMAC of a host (Utils::siteToken), and the proxy
- * builds frame-ancestors and the bridge's parent origins from the host it
- * resolves the token to (RenderCardForm::frameAncestors). Encrypting the
- * storefront's host here is what lets that storefront - and only it - frame
- * the form and open the bridge, with nothing changed on the proxy. The host
- * has to be on the proxy's Allowed Domains list. The proxy drops the port, so
- * a storefront on a non-default port (http://localhost:3000) also needs its
- * origin in the proxy's storefront origins.
+ * The session token is an HMAC of this shop's home domain (Utils::siteToken);
+ * the domain itself is in neither the URL nor anything the proxy sends to the
+ * browser. The proxy does not restrict who frames the form, so the storefront
+ * needs no setting of its own.
  *
- * Public on purpose: the URL carries no secret, and replaying it is harmless
- * for the same frame-ancestors reason. The shared key never leaves WordPress.
- * Payments are unaffected: the capture still names this shop as merchant_site.
+ * Public on purpose: the URL carries no secret, and the token the form makes
+ * can only be charged through this shop's signed capture call. The shared key
+ * never leaves WordPress.
  */
 final class CardFrameRoute extends AbstractRoute
 {
@@ -67,17 +63,6 @@ final class CardFrameRoute extends AbstractRoute
             return self::unavailable('impera_tagada_no_proxy_domain');
         }
 
-        // The gateway is hidden at checkout without it (PaymentGateway::is_available()),
-        // and the proxy would refuse to be framed by an unlisted storefront anyway.
-        $storefrontOrigin = $settings->getStorefrontOrigin();
-        $storefrontHost   = (string) wp_parse_url($storefrontOrigin, PHP_URL_HOST);
-
-        if ($storefrontOrigin === '' || $storefrontHost === '') {
-            $logger->error('Card frame link requested but the storefront origin is not configured.');
-
-            return self::unavailable('impera_tagada_no_storefront_origin');
-        }
-
         // The redirect flow has no card form to frame.
         if (!$settings->isPaymentMethodAdvanced()) {
             $logger->error('Card frame link requested but the checkout flow is not the card form.');
@@ -89,8 +74,7 @@ final class CardFrameRoute extends AbstractRoute
             $url = Utils::buildFullProxyUrl(
                 $proxyDomain,
                 $settings->getMode(),
-                ImperaMain::resolve(SharedSecret::class)->get(),
-                $storefrontHost
+                ImperaMain::resolve(SharedSecret::class)->get()
             );
         } catch (Throwable $e) {
             $logger->error('Card frame link: ' . $e->getMessage());
@@ -99,7 +83,7 @@ final class CardFrameRoute extends AbstractRoute
         }
 
         // The token stays out of the log.
-        $logger->info(sprintf('Card frame link issued | storefront=%s proxy=%s', $storefrontOrigin, $proxyDomain));
+        $logger->info(sprintf('Card frame link issued | proxy=%s', $proxyDomain));
 
         return new WP_REST_Response([
             'url'    => $url,

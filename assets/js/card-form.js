@@ -142,7 +142,7 @@
     };
 
     for (;;) {
-        const next = await Mj.connectFrame(isOurFrame);
+        const next = await ImperaTagadaBridge.connectFrame(isOurFrame);
 
         if (bridge) {
             bridge.destroy();
@@ -150,11 +150,11 @@
 
         bridge = next;
 
-        bridge.on('tagadaResizeIframe', ({scrollHeight}) => {
+        bridge.on('resize', ({scrollHeight}) => {
             $(`#${settings.frameId}`).attr('height', scrollHeight + 20);
         })
 
-        bridge.on('tagadaCardFormSubmit', () => {
+        bridge.on('submit', () => {
             blockElement(impera_checkout_form);
             armWatchdog();
         })

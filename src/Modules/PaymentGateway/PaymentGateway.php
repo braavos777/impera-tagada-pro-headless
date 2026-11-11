@@ -89,8 +89,7 @@ final class PaymentGateway extends WC_Payment_Gateway
     /**
      * Hidden rather than failing at checkout: an unsupported currency, a
      * missing key or a missing proxy domain would each make every payment fail,
-     * so the customer is not offered the method at all. The same goes for the
-     * storefront origin: without it the card form has nowhere it may be framed.
+     * so the customer is not offered the method at all.
      */
     public function is_available(): bool
     {
@@ -98,8 +97,7 @@ final class PaymentGateway extends WC_Payment_Gateway
             && $this->isCurrencySupported()
             && $this->gatewaySettings->getClientKey() !== ''
             && $this->sharedSecret->isConfigured()
-            && $this->hasProxyDomain()
-            && $this->hasStorefrontOrigin();
+            && $this->hasProxyDomain();
     }
 
     /**
@@ -165,28 +163,6 @@ final class PaymentGateway extends WC_Payment_Gateway
             $domain === ''
                 ? 'Proxy domain is required.'
                 : sprintf('Proxy domain "%s" is not a valid host name.', esc_html($domain))
-        );
-
-        return (string) $this->get_option($key);
-    }
-
-    /**
-     * Called by WC_Settings_API::process_admin_options() for the `storefront_origin` field.
-     * Stored as "scheme://host[:port]"; an invalid value is rejected and the old one kept.
-     */
-    public function validate_storefront_origin_field($key, $value): string
-    {
-        $raw    = is_scalar($value) ? trim((string) wp_unslash($value)) : '';
-        $origin = WcGatewaySettings::normalizeOrigin($raw);
-
-        if ($origin !== '') {
-            return $origin;
-        }
-
-        WC_Admin_Settings::add_error(
-            $raw === ''
-                ? 'Storefront origin is required.'
-                : sprintf('Storefront origin "%s" is not a valid origin (scheme://host[:port]).', esc_html($raw))
         );
 
         return (string) $this->get_option($key);
@@ -359,11 +335,6 @@ final class PaymentGateway extends WC_Payment_Gateway
         return $this->gatewaySettings->getProxyDomain() !== '';
     }
 
-    private function hasStorefrontOrigin(): bool
-    {
-        return $this->gatewaySettings->getStorefrontOrigin() !== '';
-    }
-
     /**
      * @return string[]
      */
@@ -388,10 +359,6 @@ final class PaymentGateway extends WC_Payment_Gateway
 
         if (!$this->hasProxyDomain()) {
             $problems[] = 'The proxy domain is not set.';
-        }
-
-        if (!$this->hasStorefrontOrigin()) {
-            $problems[] = 'The storefront origin is not set.';
         }
 
         return $problems;

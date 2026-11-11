@@ -98,57 +98,6 @@ final class WcGatewaySettings
         return explode('/', $domain, 2)[0];
     }
 
-    /**
-     * The origin of the page that frames the card form, '' when it is not set
-     * or not a valid origin. No fallback to this site: an empty value is what
-     * turns the method off (see PaymentGateway::is_available()).
-     */
-    public function getStorefrontOrigin(): string
-    {
-        return self::normalizeOrigin((string) $this->get('storefront_origin', ''));
-    }
-
-    /**
-     * "scheme://host[:port]", lowercased, with the default port dropped and
-     * any path cut off - the shape a browser puts in an Origin header and the
-     * proxy's StorefrontOrigin::normalize() compares against. A bare host would
-     * never match: origins are compared literally.
-     *
-     * Returns '' for anything that is not an http(s) origin. http is allowed on
-     * purpose, for a storefront developed on http://localhost:3000.
-     */
-    public static function normalizeOrigin(string $value): string
-    {
-        $value = trim($value);
-
-        if ($value === '') {
-            return '';
-        }
-
-        $parts = wp_parse_url($value);
-
-        if (!is_array($parts) || empty($parts['host']) || empty($parts['scheme'])) {
-            return '';
-        }
-
-        $scheme = strtolower((string) $parts['scheme']);
-
-        if (!in_array($scheme, ['http', 'https'], true)) {
-            return '';
-        }
-
-        $host = strtolower(rtrim((string) $parts['host'], '.'));
-
-        if ($host === '') {
-            return '';
-        }
-
-        $port    = isset($parts['port']) ? (int) $parts['port'] : 0;
-        $default = $scheme === 'https' ? 443 : 80;
-
-        return $scheme . '://' . $host . ($port > 0 && $port !== $default ? ':' . $port : '');
-    }
-
     public function getInvoicePrefix(): string
     {
         return (string) $this->get('invoice_prefix', 'WC-');

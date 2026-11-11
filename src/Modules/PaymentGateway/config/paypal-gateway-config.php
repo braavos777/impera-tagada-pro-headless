@@ -23,16 +23,6 @@ return [
                 'required'  => 'required'
             ],
         ],
-        'storefront_origin'     => [
-            'title'       => 'Storefront origin <sup style="color: red">*</sup>',
-            'type'        => 'text',
-            'description' => 'Origin of the headless storefront that frames the card form, with its scheme and, when it is not the default, its port — <code>https://shop.example.com</code> or <code>http://localhost:3000</code>. Its host is encrypted into the card form link, and the proxy lets only that host frame the form, so the host has to be on the proxy\'s Allowed Domains. A storefront on a non-default port (localhost:3000) also needs its origin in the proxy\'s storefront origins. Without this field the payment method is not offered at checkout.',
-            'default'     => '',
-            'placeholder' => 'https://shop.example.com',
-            'custom_attributes' => [
-                'required'  => 'required'
-            ],
-        ],
         'title'                 => [
             'title'       => 'Title',
             'type'        => 'text',

@@ -218,17 +218,14 @@ final class Utils
      * computing the same token for every entry of its allowed list
      * (DomainGuard::resolveSiteToken on the proxy).
      *
-     * The host in the token is also the one the proxy lets frame the form: it
-     * builds frame-ancestors and the bridge's parent origins from it. So the
-     * classic checkout encrypts this shop, and a headless storefront passes
-     * its own host as $siteHost (CardFrameRoute). Either host has to be on the
-     * proxy's Allowed Domains list.
-     *
-     * @param string|null $siteHost Host to issue the link for; this shop when null.
+     * The token is always this shop's home domain, which has to be on the
+     * proxy's Allowed Domains list. The proxy does not restrict who frames the
+     * form (no frame-ancestors - it would show the domain in the browser), so
+     * the same link serves the classic checkout and a headless storefront.
      *
      * @throws RuntimeException when the shared key is not configured.
      */
-    public static function buildFullProxyUrl(string $proxyDomain, string $mode, string $sharedKey, ?string $siteHost = null): string
+    public static function buildFullProxyUrl(string $proxyDomain, string $mode, string $sharedKey): string
     {
         if ($sharedKey === '') {
             throw new RuntimeException('The proxy shared key is not configured.');

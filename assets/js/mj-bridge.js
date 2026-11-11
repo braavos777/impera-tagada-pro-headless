@@ -1,14 +1,26 @@
 /**
- * Mj — кросс-доменный мост N (Next) <-> I (iframe на прокси).
+ * ImperaTagadaBridge — кросс-доменный мост N (магазин / витрина) <-> I (iframe формы карты на прокси).
  * Чистый vanilla JS (ES2017+), без фреймворков и без сборки.
- * UMD: в Next -> import; на прокси-странице -> <script src> и window.Mj.
- * Безопасность = проверка origin на хендшейке. Данные внутри untrusted.
+ * UMD: в сборщике -> import; на странице -> <script src> и window.ImperaTagadaBridge.
+ *
+ * Файл одинаковый в impera-tagada-gateway, impera-tagada-pro и impera-tagada-pro-headless
+ * (и в Next-витрине) — меняется только во всех сразу.
+ *
+ * Каждое сообщение несёт ns = NS, а имена событий/методов на проводе — NS + ':' + name,
+ * так что сообщения других плагинов (и чужие сообщения с похожими именами) игнорируются.
+ * Данные внутри untrusted.
  */
 (function (root, factory) {
     if (typeof module === 'object' && module.exports) module.exports = factory();
-    else root.Mj = factory();
+    else root.ImperaTagadaBridge = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
     'use strict';
+
+    const NS = 'impera-tagada-bridge/v1';
+
+    const wire = (name) => NS + ':' + name;
+
+    const isOurs = (data) => !!data && typeof data === 'object' && data.ns === NS;
 
     class Bridge {
         constructor(port) {
@@ -21,6 +33,11 @@
             if (this.port.start) this.port.start();
         }
 
+        _send(msg) {
+            msg.ns = NS;
+            this.port.postMessage(msg);
+        }
+
         // Вызвать метод на той стороне и дождаться ответа.
         request(method, args, timeoutMs) {
             if (timeoutMs === undefined) timeoutMs = 10000;
@@ -28,53 +45,54 @@
             return new Promise((resolve, reject) => {
                 const timer = setTimeout(() => {
                     this.pending.delete(id);
-                    reject(new Error('mj: "' + method + '" timed out'));
+                    reject(new Error('bridge: "' + method + '" timed out'));
                 }, timeoutMs);
                 this.pending.set(id, { resolve: resolve, reject: reject, timer: timer });
-                this.port.postMessage({ t: 'req', id: id, method: method, args: args });
+                this._send({ t: 'req', id: id, method: wire(method), args: args });
             });
         }
 
         // Зарегистрировать метод, который может вызвать та сторона.
-        handle(method, fn) { this.handlers.set(method, fn); }
+        handle(method, fn) { this.handlers.set(wire(method), fn); }
 
         // Событие без ответа.
-        emit(name, data) { this.port.postMessage({ t: 'evt', name: name, data: data }); }
+        emit(name, data) { this._send({ t: 'evt', name: wire(name), data: data }); }
 
         // Подписка на событие. Возвращает функцию отписки.
         on(name, fn) {
-            let set = this.listeners.get(name);
-            if (!set) { set = new Set(); this.listeners.set(name, set); }
+            const key = wire(name);
+            let set = this.listeners.get(key);
+            if (!set) { set = new Set(); this.listeners.set(key, set); }
             set.add(fn);
-            return () => { const s = this.listeners.get(name); if (s) s.delete(fn); };
+            return () => { const s = this.listeners.get(key); if (s) s.delete(fn); };
         }
 
         destroy() {
-            this.pending.forEach((p) => { clearTimeout(p.timer); p.reject(new Error('mj: destroyed')); });
+            this.pending.forEach((p) => { clearTimeout(p.timer); p.reject(new Error('bridge: destroyed')); });
             this.pending.clear();
             this.port.close();
         }
 
         async _onMessage(msg) {
-            if (!msg || typeof msg !== 'object') return;
+            if (!isOurs(msg)) return;
             if (msg.t === 'res') {
                 const p = this.pending.get(msg.id);
                 if (!p) return;
                 clearTimeout(p.timer);
                 this.pending.delete(msg.id);
                 if (msg.ok) p.resolve(msg.data);
-                else p.reject(new Error(msg.error || 'mj: error'));
+                else p.reject(new Error(msg.error || 'bridge: error'));
             } else if (msg.t === 'req') {
                 const fn = this.handlers.get(msg.method);
                 if (!fn) {
-                    this.port.postMessage({ t: 'res', id: msg.id, ok: false, error: 'no handler: ' + msg.method });
+                    this._send({ t: 'res', id: msg.id, ok: false, error: 'no handler: ' + msg.method });
                     return;
                 }
                 try {
                     const data = await fn(msg.args);
-                    this.port.postMessage({ t: 'res', id: msg.id, ok: true, data: data });
+                    this._send({ t: 'res', id: msg.id, ok: true, data: data });
                 } catch (err) {
-                    this.port.postMessage({ t: 'res', id: msg.id, ok: false, error: String((err && err.message) || err) });
+                    this._send({ t: 'res', id: msg.id, ok: false, error: String((err && err.message) || err) });
                 }
             } else if (msg.t === 'evt') {
                 const set = this.listeners.get(msg.name);
@@ -83,7 +101,7 @@
         }
     }
 
-    // N-сторона (домен мерчанта). Хендшейк инициирует iframe -> гонки загрузки нет.
+    // N-сторона (страница магазина). Хендшейк инициирует iframe -> гонки загрузки нет.
     // proxyOrigin: строка, массив или функция (origin, source) => boolean,
     // которая проверяется в момент сообщения (iframe мог смениться).
     function connectFrame(proxyOrigin) {
@@ -92,35 +110,41 @@
             : ((set) => (origin) => set.has(origin))(new Set([].concat(proxyOrigin)));
         return new Promise((resolve) => {
             const onMsg = (e) => {
-                if (!e.data || e.data.__mj !== 'ready') return;
+                if (!isOurs(e.data) || e.data.type !== 'ready') return;
                 if (!allows(e.origin, e.source)) return;         // <- критично
                 window.removeEventListener('message', onMsg);
                 const channel = new MessageChannel();
-                e.source.postMessage({ __mj: 'connect' }, e.origin, [channel.port2]);
+                e.source.postMessage({ ns: NS, type: 'connect' }, e.origin, [channel.port2]);
                 resolve(new Bridge(channel.port1));
             };
             window.addEventListener('message', onMsg);
         });
     }
 
-    // I-сторона (домен прокси, внутри iframe). Пингует parent пока не получит порт.
-    // merchantOrigin: строка или массив (allowlist, если магазинов несколько).
-    function acceptHost(merchantOrigin) {
-        const allowed = new Set(Array.isArray(merchantOrigin) ? merchantOrigin : [merchantOrigin]);
+    // I-сторона (iframe на прокси). Пингует parent, пока не получит порт.
+    // parentOrigin: строка или массив origin'ов; '*' (или ничего) — любой родитель:
+    // тогда "ready" уходит с targetOrigin '*' (в нём нет данных), а "connect"
+    // принимается только от самого window.parent.
+    function acceptHost(parentOrigin) {
+        const list = parentOrigin === undefined ? ['*'] : [].concat(parentOrigin);
+        const any = list.indexOf('*') !== -1;
+        const allowed = new Set(list);
         return new Promise((resolve) => {
             const onMsg = (e) => {
-                if (!allowed.has(e.origin)) return;              // <- критично
-                if (!e.data || e.data.__mj !== 'connect' || !e.ports[0]) return;
+                if (!isOurs(e.data) || e.data.type !== 'connect' || !e.ports[0]) return;
+                if (e.source !== window.parent) return;          // <- критично
+                if (!any && !allowed.has(e.origin)) return;      // <- критично
                 window.removeEventListener('message', onMsg);
                 clearInterval(pinger);
                 resolve(new Bridge(e.ports[0]));
             };
             window.addEventListener('message', onMsg);
-            const ping = () => allowed.forEach((o) => window.parent.postMessage({ __mj: 'ready' }, o));
+            const ping = () => (any ? ['*'] : list)
+                .forEach((o) => window.parent.postMessage({ ns: NS, type: 'ready' }, o));
             const pinger = setInterval(ping, 200);
             ping();
         });
     }
 
-    return { Bridge: Bridge, connectFrame: connectFrame, acceptHost: acceptHost };
+    return { NS: NS, Bridge: Bridge, connectFrame: connectFrame, acceptHost: acceptHost };
 });
