@@ -104,6 +104,13 @@ final class ApplyPaymentResult
         wp_cache_delete($orderId, 'orders');
         wp_cache_delete('order-' . $orderId, 'orders');
 
+        // HPOS keeps orders in its own cache under prefixed keys the deletes
+        // above never reach: without this the "fresh" read is the copy this
+        // request loaded before it took the lock.
+        if (class_exists(\Automattic\WooCommerce\Caches\OrderCache::class)) {
+            wc_get_container()->get(\Automattic\WooCommerce\Caches\OrderCache::class)->remove($orderId);
+        }
+
         $order = wc_get_order($orderId);
 
         if (!$order instanceof WC_Order) {
