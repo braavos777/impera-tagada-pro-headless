@@ -1,7 +1,7 @@
 {
   "name": "impera/impera-tagada-pro-headless",
   "description": "Tagada Integration Plugin for WooCommerce",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "type": "wordpress-plugin",
   "autoload": {
     "psr-4": {

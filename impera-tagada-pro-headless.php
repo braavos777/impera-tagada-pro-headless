@@ -4,7 +4,7 @@
  * Description: Tagada checkout through a proxy domain, for WooCommerce.
  * Author: Impera
  * Author URI:
- * Version: 1.0.2
+ * Version: 1.1.0
  * Requires at least: 6.0
  * Requires PHP: 8.2
  * WC requires at least: 8.0
