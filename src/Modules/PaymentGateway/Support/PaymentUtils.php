@@ -7,13 +7,15 @@ declare(strict_types=1);
 
 namespace ImperaTagadaProHeadless\Modules\PaymentGateway\Support;
 
-use ImperaTagadaProHeadless\Core\Config\SharedSecret;
 use ImperaTagadaProHeadless\Core\ImperaMain;
 use ImperaTagadaProHeadless\Modules\PaymentGateway\Exceptions\PaymentProcessException;
 use WC_Order;
 
 final class PaymentUtils
 {
+    /** Another payment of the same order is running: nothing was attempted. */
+    public const MARKER_BUSY = 'BUSY';
+
 
     private const MAX_TOKEN_LENGTH = 4096;
 
@@ -68,23 +70,33 @@ final class PaymentUtils
     }
 
     /**
-     * Through SharedSecret, so a key pinned in wp-config.php counts too.
+     * One payment per order at a time. A second submit (double click, second
+     * tab) must not put its attempt on the order while the first one is being
+     * charged. MySQL GET_LOCK: atomic, released with the connection if PHP
+     * dies. A busy order is refused at once, and nothing is attempted.
+     *
+     * @template T
+     * @param callable(): T $work
+     * @return T
      */
-    public static function assertSharedKey(WC_Order $order, SharedSecret $sharedSecret): void
+    public static function withOrderLock(WC_Order $order, callable $work): mixed
     {
-        if ($sharedSecret->isConfigured()) {
-            return;
+        global $wpdb;
+
+        $lock = ltrim(ImperaMain::config()->keyPrefix, '_') . '_pay_' . $order->get_id();
+
+        if ((int) $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, 0)', $lock)) !== 1) {
+            throw new PaymentProcessException(
+                'A payment for this order is already being processed. Please wait a moment and check your order.',
+                self::MARKER_BUSY
+            );
         }
 
-        ImperaMain::logger()->error(sprintf(
-            'Order %d cannot be paid: the Tagada gateway has no shared key configured.',
-            $order->get_id()
-        ));
-
-        throw new PaymentProcessException(
-            'We cannot process your payment right now, please try another payment method.',
-            'PPNC'
-        );
+        try {
+            return $work();
+        } finally {
+            $wpdb->query($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock));
+        }
     }
 
     private static function rejectProxyDomain(WC_Order $order, string $reason, string $marker): never

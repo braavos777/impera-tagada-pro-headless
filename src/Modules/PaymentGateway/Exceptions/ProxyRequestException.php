@@ -25,7 +25,8 @@ final class ProxyRequestException extends Exception
         string $message,
         int $httpStatus = 0,
         private readonly string $errorCode = '',
-        ?Throwable $previous = null
+        ?Throwable $previous = null,
+        public readonly array $body = [],
     ) {
         parent::__construct($message, $httpStatus, $previous);
     }

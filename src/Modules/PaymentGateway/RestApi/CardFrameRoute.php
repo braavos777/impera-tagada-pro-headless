@@ -7,10 +7,10 @@ declare(strict_types=1);
 
 namespace ImperaTagadaProHeadless\Modules\PaymentGateway\RestApi;
 
-use ImperaTagadaProHeadless\Core\Config\SharedSecret;
 use ImperaTagadaProHeadless\Core\ImperaMain;
 use ImperaTagadaProHeadless\Core\RestApi\Action;
 use ImperaTagadaProHeadless\Core\RestApi\Contract\AbstractRoute;
+use ImperaTagadaProHeadless\Core\Support\ShopKey;
 use ImperaTagadaProHeadless\Core\Support\Utils;
 use ImperaTagadaProHeadless\Modules\PaymentGateway\WcGatewaySettings;
 use Throwable;
@@ -28,7 +28,7 @@ use WP_REST_Response;
  * needs no setting of its own.
  *
  * Public on purpose: the URL carries no secret, and the token the form makes
- * can only be charged through this shop's signed capture call. The shared key
+ * can only be charged through this shop's signed capture call. The shop key
  * never leaves WordPress.
  */
 final class CardFrameRoute extends AbstractRoute
@@ -74,12 +74,12 @@ final class CardFrameRoute extends AbstractRoute
             $url = Utils::buildFullProxyUrl(
                 $proxyDomain,
                 $settings->getMode(),
-                ImperaMain::resolve(SharedSecret::class)->get()
+                ShopKey::secret()
             );
         } catch (Throwable $e) {
             $logger->error('Card frame link: ' . $e->getMessage());
 
-            return self::unavailable('impera_tagada_no_shared_key');
+            return self::unavailable('impera_tagada_no_shop_key');
         }
 
         // The token stays out of the log.

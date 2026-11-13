@@ -8,13 +8,13 @@ declare(strict_types=1);
 namespace ImperaTagadaProHeadless\Modules\PaymentGateway;
 
 use ImperaTagadaProHeadless\Core\Config\PluginConfig;
-use ImperaTagadaProHeadless\Core\Config\SharedSecret;
 use ImperaTagadaProHeadless\Core\Container;
 use ImperaTagadaProHeadless\Core\Contract\LoggerInterface;
 use ImperaTagadaProHeadless\Core\Contract\ProviderInterface;
-use ImperaTagadaProHeadless\Modules\PaymentGateway\Proxy\ProxySignature;
 use ImperaTagadaProHeadless\Modules\PaymentGateway\RestApi\RouteRegister;
 use ImperaTagadaProHeadless\Modules\PaymentGateway\UseCases\ApplyPaymentResult;
+use ImperaTagadaProHeadless\Modules\PaymentGateway\UseCases\PaymentReconciler;
+use ImperaTagadaProHeadless\Modules\PaymentGateway\UseCases\PaymentResultValidator;
 use ImperaTagadaProHeadless\Modules\PaymentGateway\Proxy\ProxyClient;
 
 final class GatewayProvider implements ProviderInterface
@@ -32,24 +32,27 @@ final class GatewayProvider implements ProviderInterface
             return new PaymentGateway(
                 $container->get(PluginConfig::class),
                 $container->get(WcGatewaySettings::class),
-                $container->get(SharedSecret::class),
                 $container->get(LoggerInterface::class)
             );
         });
 
-        $container->singleton(ProxySignature::class, static fn (Container $container) => new ProxySignature(
-            $container->get(WcGatewaySettings::class),
-            $container->get(SharedSecret::class)
-        ));
-
         $container->singleton(ProxyClient::class, static fn (Container $container) => new ProxyClient(
             $container->get(PluginConfig::class),
-            $container->get(ProxySignature::class),
             $container->get(LoggerInterface::class)
         ));
 
+        // The one place a result changes an order: capture, push and status
+        // check alike. No proxy rotation in this plugin.
         $container->singleton(ApplyPaymentResult::class, static fn (Container $container) => new ApplyPaymentResult(
             $container->get(PluginConfig::class),
+            new PaymentResultValidator(),
+            $container->get(LoggerInterface::class)
+        ));
+
+        $container->singleton(PaymentReconciler::class, static fn (Container $container) => new PaymentReconciler(
+            $container->get(PluginConfig::class),
+            $container->get(ProxyClient::class),
+            $container->get(ApplyPaymentResult::class),
             $container->get(LoggerInterface::class)
         ));
     }
@@ -64,6 +67,9 @@ final class GatewayProvider implements ProviderInterface
 
         // /payment/notify - the proxy's signed push.
         new RouteRegister();
+
+        // Background checks of payments whose outcome is not known yet.
+        PaymentReconciler::register();
 
     }
 }

@@ -41,5 +41,15 @@ enum MetaKey: string
     /** Who confirmed the payment first (ApplyPaymentResult::SOURCE_*) and when. */
     case PaidSource    = 'paid_source';
 
+    /** The shop's current payment attempt (32 hex), bound on the proxy to one Tagada payment. */
+    case AttemptId     = 'attempt_id';
 
+    /** test | live - of the attempt, from the server setting, never the browser's. */
+    case Mode          = 'mode';
+
+    /** Set once the paid amount counted (unused here: no rotation, kept for parity). */
+    case TurnoverCounted = 'turnover_counted';
+
+    /** Set while the outcome of the attempt is not known (PaymentReconciler). */
+    case Unknown       = 'payment_unknown';
 }

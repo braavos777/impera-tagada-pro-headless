@@ -18,8 +18,8 @@ final class Utils
     private const LOCALE_PATTERN = '/^[a-z]{2}(?:-[A-Z][a-z]{3})?(?:-(?:[A-Z]{2}|[0-9]{3}))?$/';
 
     /**
-     * HKDF info for the session token key - keeps it apart from the HMAC key
-     * that signs requests (both come from the same shared key).
+     * HKDF info for the site token key - keeps it apart from the HMAC key
+     * that signs requests (both come from this shop's key secret).
      */
     private const SITE_TOKEN_INFO = 'impera-tagada/merchant-site-v1';
 
@@ -214,21 +214,21 @@ final class Utils
      * comes from the gateway settings only - never from the request.
      *
      * The shop's domain is not in it: the proxy gets "token" - an HMAC of the
-     * domain under a key derived from the shared key - and finds the domain by
-     * computing the same token for every entry of its allowed list
-     * (DomainGuard::resolveSiteToken on the proxy).
+     * domain under a key derived from this shop's own secret (ShopKey) - and
+     * finds the shop by computing the same token for every active shop key
+     * (SignedRequest::resolveSiteToken on the proxy).
      *
      * The token is always this shop's home domain, which has to be on the
      * proxy's Allowed Domains list. The proxy does not restrict who frames the
      * form (no frame-ancestors - it would show the domain in the browser), so
      * the same link serves the classic checkout and a headless storefront.
      *
-     * @throws RuntimeException when the shared key is not configured.
+     * @throws RuntimeException when the shop key is not configured.
      */
     public static function buildFullProxyUrl(string $proxyDomain, string $mode, string $sharedKey): string
     {
-        if ($sharedKey === '') {
-            throw new RuntimeException('The proxy shared key is not configured.');
+        if ($sharedKey === '' || !ShopKey::isConfigured()) {
+            throw new RuntimeException('The shop key for the proxy is not configured.');
         }
 
         $baseUrl = self::buildDomain($proxyDomain);

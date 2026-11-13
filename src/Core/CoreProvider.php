@@ -5,13 +5,11 @@ declare(strict_types=1);
 namespace ImperaTagadaProHeadless\Core;
 
 use ImperaTagadaProHeadless\Core\Config\PluginConfig;
-use ImperaTagadaProHeadless\Core\Config\SharedSecret;
 use ImperaTagadaProHeadless\Core\Contract\LoggerInterface;
 use ImperaTagadaProHeadless\Core\Contract\ProviderInterface;
 use ImperaTagadaProHeadless\Core\Support\View;
 use ImperaTagadaProHeadless\Core\Support\WcLogger;
 use ImperaTagadaProHeadless\Core\UpdateChecker\UpdateChecker;
-use ImperaTagadaProHeadless\Modules\PaymentGateway\WcGatewaySettings;
 
 class CoreProvider implements ProviderInterface
 {
@@ -21,15 +19,6 @@ class CoreProvider implements ProviderInterface
         $config = ImperaMain::config();
 
         $container->singleton(PluginConfig::class, static fn () => $config);
-
-        $container->singleton(
-            SharedSecret::class,
-            // WcGatewaySettings is bound by GatewayProvider; every register() runs before anything is resolved.
-            static fn (Container $container) => new SharedSecret(
-                $container->get(PluginConfig::class),
-                $container->get(WcGatewaySettings::class)
-            )
-        );
 
         $container->singleton(
             LoggerInterface::class,

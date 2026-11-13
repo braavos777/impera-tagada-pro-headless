@@ -7,7 +7,6 @@ declare(strict_types=1);
 
 namespace ImperaTagadaProHeadless\Modules\PaymentGateway\PaymentMethod;
 
-use ImperaTagadaProHeadless\Core\Config\SharedSecret;
 use ImperaTagadaProHeadless\Core\ImperaMain;
 use ImperaTagadaProHeadless\Modules\PaymentGateway\Exceptions\PaymentProcessException;
 use ImperaTagadaProHeadless\Modules\PaymentGateway\PaymentMethod\AdvancedCheckout\AdvancedCheckoutService;
@@ -39,7 +38,6 @@ final class PaymentMethodFactory
                 $settings,
                 ImperaMain::config(),
                 ImperaMain::resolve(ProxyClient::class),
-                ImperaMain::resolve(SharedSecret::class),
                 ImperaMain::resolve(ApplyPaymentResult::class),
                 ImperaMain::logger()
             ),

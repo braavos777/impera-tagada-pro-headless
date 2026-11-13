@@ -50,20 +50,6 @@ final class WcGatewaySettings
         $this->settings = [];
     }
 
-    public function getClientKey(): string
-    {
-        return trim((string) $this->get('client_key', ''));
-    }
-
-    /**
-     * The raw field only. Anything that signs or verifies must go through
-     * Core\Config\SharedSecret, where a wp-config.php constant takes precedence.
-     */
-    public function getSharedKey(): string
-    {
-        return trim((string) $this->get('shared_key', ''));
-    }
-
     /**
      * The proxy host as stored by PaymentGateway::validate_proxy_domain_field(),
      * normalized again in case the row was written some other way.

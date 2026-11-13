@@ -59,6 +59,9 @@ final class ProxyPaymentResponse
         private readonly ?string $requireAction = null,
         private readonly ?string $errorMessage = null,
         private readonly ?string $event = null,
+        private readonly string $attemptId = '',
+        private readonly string $mode = '',
+        private readonly string $state = '',
     )
     {}
 
@@ -71,16 +74,42 @@ final class ProxyPaymentResponse
 
         return new self(
             success:       ArrayUtil::getValue($response, 'success', false),
-            status:        ArrayUtil::getValue($response, 'status', self::STATUS_FAILED),
-            subStatus:     ArrayUtil::getValue($response, 'subStatus', self::STATUS_FAILED),
+            // No status is no outcome - never read as a failure: a payment
+            // may have been taken. It matches no status group, so nothing
+            // is applied and the capture path treats it as unknown.
+            status:        (string) ArrayUtil::getValue($response, 'status', ''),
+            subStatus:     (string) ArrayUtil::getValue($response, 'subStatus', ''),
             wcOrderId:     ArrayUtil::getValue($response, 'wcOrderId', 0),
             transactionId: ArrayUtil::getValue($response, 'transactionId', null),
             amountMinor:   (int) ArrayUtil::getValue($response, 'amountMinor', 0),
-            currency:      strtoupper((string)  ArrayUtil::getValue($response, 'currency', 'USD')),
+            // Nothing missing is assumed: the validator refuses an answer
+            // without a currency or a mode.
+            currency:      strtoupper((string)  ArrayUtil::getValue($response, 'currency', '')),
             requireAction: (string)  ArrayUtil::getValue($response, 'requireAction', null),
             errorMessage:  ArrayUtil::getValue($response, 'errorMessage', null),
-            event:         ArrayUtil::getValue($response, 'event', null)
+            event:         ArrayUtil::getValue($response, 'event', null),
+            attemptId:     (string) ArrayUtil::getValue($response, 'attempt_id', ''),
+            mode:          (string) ArrayUtil::getValue($response, 'mode', ''),
+            state:         (string) ArrayUtil::getValue($response, 'state', ''),
         );
+    }
+
+    public function getAttemptId(): string
+    {
+        return $this->attemptId;
+    }
+
+    public function getMode(): string
+    {
+        return $this->mode;
+    }
+
+    /**
+     * captured | not_captured | unknown - answered by the status check only.
+     */
+    public function getState(): string
+    {
+        return $this->state;
     }
 
     public function getStatus(): string

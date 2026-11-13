@@ -57,23 +57,18 @@ return [
             'description' => 'Every payment is sent to the proxy with mode=test. Turn it off for real payments.',
             'default'     => 'no',
         ],
-        'client_key'            => [
-            'title'       => 'Client key <sup style="color: red">*</sup>',
-            'type'        => 'password',
-            'description' => '',
+        'shop_key_id'           => [
+            'title'       => 'Shop key id <sup style="color: red">*</sup>',
+            'type'        => 'text',
+            'description' => 'Issued for this shop on the Tagada proxy ("Shop keys"). A wp-config constant overrides this field.',
             'default'     => '',
-            'custom_attributes' => [
-                'required'  => 'required'
-            ],
+            'placeholder' => 'mk_…',
         ],
-        'shared_key'            => [
-            'title'       => 'Proxy shared key <sup style="color: red">*</sup>',
+        'shop_key_secret'       => [
+            'title'       => 'Shop key secret <sup style="color: red">*</sup>',
             'type'        => 'password',
-            'description' => 'It signs every request the shop sends and verifies every payment the proxy reports back.',
+            'description' => 'Shown once when the key is issued. Signs every request to the proxy and verifies every payment it reports back.',
             'default'     => '',
-            'custom_attributes' => [
-                'required'  => 'required'
-            ],
         ],
         'card_icons' => array(
             'type' => 'multiselect',

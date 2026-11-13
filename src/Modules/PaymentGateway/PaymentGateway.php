@@ -7,13 +7,17 @@ declare(strict_types=1);
 
 namespace ImperaTagadaProHeadless\Modules\PaymentGateway;
 
+use ImperaTagadaProHeadless\Core\Config\MetaKey;
 use ImperaTagadaProHeadless\Core\Config\PluginConfig;
-use ImperaTagadaProHeadless\Core\Config\SharedSecret;
 use ImperaTagadaProHeadless\Core\Contract\LoggerInterface;
+use ImperaTagadaProHeadless\Core\ImperaMain;
+use ImperaTagadaProHeadless\Core\Support\ShopKey;
 use ImperaTagadaProHeadless\Core\Support\Utils;
 use ImperaTagadaProHeadless\Core\Support\View;
 use ImperaTagadaProHeadless\Modules\PaymentGateway\Hooks\AssetsRegister;
 use ImperaTagadaProHeadless\Modules\PaymentGateway\Exceptions\PaymentProcessException;
+use ImperaTagadaProHeadless\Modules\PaymentGateway\Exceptions\PaymentUnknownException;
+use ImperaTagadaProHeadless\Modules\PaymentGateway\UseCases\PaymentReconciler;
 use ImperaTagadaProHeadless\Modules\PaymentGateway\PaymentMethod\PaymentMethodFactory;
 use ImperaTagadaProHeadless\Modules\PaymentGateway\Responses\ProcessPaymentResponse;
 use Throwable;
@@ -39,12 +43,11 @@ final class PaymentGateway extends WC_Payment_Gateway
     /**
      * Password fields whose stored value is never rendered back into the form.
      */
-    private const SECRET_FIELDS = ['client_key', 'shared_key'];
+    private const SECRET_FIELDS = ['shop_key_secret'];
 
     public function __construct(
         public readonly PluginConfig $config,
         public readonly WcGatewaySettings $gatewaySettings,
-        public readonly SharedSecret $sharedSecret,
         public readonly LoggerInterface $logger,
     ) {
         $this->id                 = $config->gatewayId;
@@ -95,14 +98,12 @@ final class PaymentGateway extends WC_Payment_Gateway
     {
         return parent::is_available()
             && $this->isCurrencySupported()
-            && $this->gatewaySettings->getClientKey() !== ''
-            && $this->sharedSecret->isConfigured()
+            && ShopKey::isConfigured()
             && $this->hasProxyDomain();
     }
 
     /**
-     * WcGatewaySettings caches the settings row, and SharedSecret reads the key
-     * through it: without the flush, the notices rendered right after saving
+     * WcGatewaySettings caches the settings row: without the flush, the notices rendered right after saving
      * would still judge the old values.
      */
     public function process_admin_options(): bool
@@ -169,20 +170,11 @@ final class PaymentGateway extends WC_Payment_Gateway
     }
 
     /**
-     * Called by WC_Settings_API::process_admin_options() for the `client_key` field.
+     * The shop key secret is used as-is; an empty submit keeps the stored one.
      */
-    public function validate_client_key_field($key, $value): string
+    public function validate_shop_key_secret_field($key, $value): string
     {
-        return $this->keepSecret($key, $value, 'Client key', true);
-    }
-
-    /**
-     * Called by WC_Settings_API::process_admin_options() for the `shared_key` field.
-     * Not required when wp-config.php sets the key: the field is ignored then.
-     */
-    public function validate_shared_key_field($key, $value): string
-    {
-        return $this->keepSecret($key, $value, 'Proxy shared key', !$this->sharedSecret->isDefinedInConfig());
+        return $this->keepSecret($key, $value, 'Shop key secret', !ShopKey::isDefinedInConfig());
     }
 
     public function process_payment($order_id): array
@@ -196,8 +188,32 @@ final class PaymentGateway extends WC_Payment_Gateway
             return ProcessPaymentResponse::failure()->toArray();
         }
 
-        try {
+        $reconciler = ImperaMain::resolve(PaymentReconciler::class);
 
+        // Only while the order is still held for it: once someone moved the
+        // order on, the flag is history and must not lock the buyer out.
+        if ($reconciler->isUnknown($order) && !$order->has_status('on-hold')) {
+            $order->delete_meta_data($this->config->meta(MetaKey::Unknown));
+            $order->save_meta_data();
+        }
+
+        // A payment whose outcome is not known is settled before a new one.
+        if ($reconciler->isUnknown($order)) {
+            $previous = $reconciler->reconcile($order->get_id(), 0, false);
+            $order    = wc_get_order($order_id) ?: $order;
+
+            if ($previous === PaymentReconciler::OUTCOME_CAPTURED) {
+                return ProcessPaymentResponse::success($order->get_checkout_order_received_url())->toArray();
+            }
+
+            if ($previous === PaymentReconciler::OUTCOME_UNKNOWN) {
+                wc_add_notice('Your previous payment for this order is still being verified. Please wait a few minutes before trying again.', 'error');
+
+                return ProcessPaymentResponse::failure()->toArray();
+            }
+        }
+
+        try {
             // From the settings only: the request has no say in test or live.
             $mode = $this->gatewaySettings->getMode();
 
@@ -205,8 +221,6 @@ final class PaymentGateway extends WC_Payment_Gateway
 
             // The proxy domain is not posted: no rotation, it comes from the settings.
             return PaymentMethodFactory::fromSettings($this->gatewaySettings)->processPayment($order, $mode, ['tagadaToken' => $tagadaToken])->toArray();
-
-
         } catch (PaymentProcessException $e) {
             $this->logger->error($e->getMessage(), [
                 'order_id' => $order->get_id(),
@@ -214,12 +228,27 @@ final class PaymentGateway extends WC_Payment_Gateway
                 'previous' => $e->getPrevious()?->getMessage(),
             ]);
             wc_add_notice($e->getErrorMessage(), 'error');
+        } catch (PaymentUnknownException $e) {
+            // The money may have been taken. Never "failed" - the buyer would
+            // pay again. Hold the order and find out in the background.
+            $reconciler->markUnknown($order, $e->getMessage(), $e->attemptId, $e->transactionId);
+
+            return ProcessPaymentResponse::success($order->get_checkout_order_received_url())->toArray();
         } catch (Throwable $e) {
             // Throwable, not Exception: a TypeError deep in a flow must not turn the checkout into a fatal.
             $this->logger->error($e->getMessage(), [
                 'order_id' => $order->get_id(),
                 'trace'    => $e->getTraceAsString(),
             ]);
+
+            // Once an attempt is on the order, its charge may have gone
+            // through: verify rather than drop it.
+            if ((string) $order->get_meta($this->config->meta(MetaKey::AttemptId)) !== '' && !$order->is_paid()) {
+                $reconciler->markUnknown($order, 'unexpected error: ' . $e->getMessage());
+
+                return ProcessPaymentResponse::success($order->get_checkout_order_received_url())->toArray();
+            }
+
             wc_add_notice('The payment could not be started. Please try again or choose another payment method.', 'error');
         }
 
@@ -282,13 +311,13 @@ final class PaymentGateway extends WC_Payment_Gateway
             return;
         }
 
-        // Without the shared key there is no session token, and the proxy would
+        // Without the shop key there is no site token, and the proxy would
         // refuse the form anyway.
         try {
             $proxyFullUrl = Utils::buildFullProxyUrl(
                 $this->gatewaySettings->getProxyDomain(),
                 $this->gatewaySettings->getMode(),
-                $this->sharedSecret->get()
+                ShopKey::secret()
             );
         } catch (Throwable $e) {
             $this->logger->error('Card form: ' . $e->getMessage());
@@ -349,12 +378,8 @@ final class PaymentGateway extends WC_Payment_Gateway
             );
         }
 
-        if ($this->gatewaySettings->getClientKey() === '') {
-            $problems[] = 'The client key is not set.';
-        }
-
-        if (!$this->sharedSecret->isConfigured()) {
-            $problems[] = 'The proxy shared key is not set.';
+        if (!ShopKey::isConfigured()) {
+            $problems[] = 'The shop key is not set: issue one on the Tagada proxy ("Shop keys") and enter its id and secret.';
         }
 
         if (!$this->hasProxyDomain()) {
@@ -365,22 +390,21 @@ final class PaymentGateway extends WC_Payment_Gateway
     }
 
     /**
-     * With the key in wp-config.php the field is dead weight: it must not be
-     * required, and the screen has to say which value is actually used.
+     * With the key in wp-config.php the field is dead weight: the screen has
+     * to say which value is actually used.
      */
     private function adjustSharedKeyField(): void
     {
-        if (!isset($this->form_fields['shared_key']) || !$this->sharedSecret->isDefinedInConfig()) {
+        if (!isset($this->form_fields['shop_key_secret']) || !ShopKey::isDefinedInConfig()) {
             return;
         }
 
-        $field = &$this->form_fields['shared_key'];
+        $field = &$this->form_fields['shop_key_secret'];
 
-        $field['title'] = 'Proxy shared key';
-        unset($field['custom_attributes']['required']);
+        $field['title']       = 'Shop key secret';
         $field['description'] = sprintf(
             'Set in wp-config.php as <code>%s</code>; this field is ignored.',
-            esc_html($this->sharedSecret->constantName())
+            esc_html($this->config->constantName('secret'))
         );
     }
 
