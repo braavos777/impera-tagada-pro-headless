@@ -47,20 +47,6 @@ add_action('before_woocommerce_init', static function () {
     }
 });
 
-if ( ! defined( 'GITHUB_ACCESS_TOKEN' ) || empty( GITHUB_ACCESS_TOKEN ) ) {
-    add_action( 'admin_notices', static function () {
-        ?>
-        <div class="notice notice-error">
-            <p>
-                <strong>Impera Proxy Payment Plugin:</strong>
-                The <code>GITHUB_ACCESS_TOKEN</code> constant is not defined.
-                GitHub updates and private repository access will not work until the token is configured.
-            </p>
-        </div>
-        <?php
-    } );
-}
-
 
 use ImperaTagadaProHeadless\Core\Config\PluginConfig;
 use ImperaTagadaProHeadless\Core\CoreSetupPlugin;
